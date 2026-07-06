@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מנהל הכספים הפרטי שלי</title>
+    <style>
+        :root {
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --text-color: #333;
+            --primary: #4a90e2;
+            --income: #2ecc71;
+            --expense: #e74c3c;
+            --loan: #f39c12;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+
+        .balance-box {
+            text-align: center;
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+        }
+
+        .balance-amount {
+            font-size: 32px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #357abd;
+        }
+
+        .history {
+            margin-top: 30px;
+        }
+
+        .history h2 {
+            font-size: 18px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+        }
+
+        .transaction-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .transaction-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            background: #f9f9f9;
+            border-right: 5px solid #ccc;
+        }
+
+        .item-income { border-right-color: var(--income); }
+        .item-expense { border-right-color: var(--expense); }
+        .item-loan { border-right-color: var(--loan); }
+
+        .delete-btn {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 18px;
+            width: auto;
+            padding: 0 5px;
+        }
+
+        .delete-btn:hover {
+            color: var(--expense);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>הארנק שלי</h1>
+    
+    <div class="balance-box">
+        <div>יתרה נוכחית</div>
+        <div class="balance-amount" id="balance">₪0.00</div>
+    </div>
+
+    <form id="transaction-form">
+        <div class="form-group">
+            <label for="type">סוג הפעולה</label>
+            <select id="type">
+                <option value="income">הכנסה (+)</option>
+                <option value="expense">הורדה / הוצאה (-)</option>
+                <option value="loan">הלוואה (⚠️)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="description">סיבה / תיאור</label>
+            <input type="text" id="description" placeholder="לדוגמה: עבודה אבא, קניית סרט" required>
+        </div>
+
+        <div class="form-group">
+            <label for="amount">סכום (₪)</label>
+            <input type="number" id="amount" placeholder="0.00" step="any" required>
+        </div>
+
+        <button type="submit">הוסף תנועה</button>
+    </form>
+
+    <div class="history">
+        <h2>היסטוריית פעולות</h2>
+        <ul class="transaction-list" id="transaction-list"></ul>
+    </div>
+</div>
+
+<script>
+    let transactions = JSON.parse(localStorage.getItem('my_wallet_transactions')) || [];
+
+    const balanceEl = document.getElementById('balance');
+    const form = document.getElementById('transaction-form');
+    const descriptionEl = document.getElementById('description');
+    const amountEl = document.getElementById('amount');
+    const typeEl = document.getElementById('type');
+    const listEl = document.getElementById('transaction-list');
+
+    function updateUI() {
+        listEl.innerHTML = '';
+        let currentBalance = 0;
+
+        transactions.forEach((tx, index) => {
+            const isIncome = tx.type === 'income';
+            const isLoan = tx.type === 'loan';
+            
+            if (isIncome) currentBalance += tx.amount;
+            else currentBalance -= tx.amount; // הוצאה והלוואה מורידות מהיתרה הזמינה (או שנהוג אחרת לבחירתך)
+
+            const li = document.createElement('li');
+            li.className = `transaction-item item-${tx.type}`;
+            
+            let sign = isIncome ? '+' : '-';
+            let displayType = 'הוצאה';
+            if(isIncome) displayType = 'הכנסה';
+            if(isLoan) displayType = 'הלוואה';
+
+            li.innerHTML = `
+                <div>
+                    <strong>${tx.description}</strong> <small>(${displayType})</small>
+                    <div style="font-size: 12px; color: #888;">${tx.date}</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-weight: bold; color: ${isIncome ? 'var(--income)' : (isLoan ? 'var(--loan)' : 'var(--expense)')}">
+                        ${sign}₪${tx.amount.toFixed(2)}
+                    </span>
+                    <button class="delete-btn" onclick="deleteTransaction(${index})">&times;</button>
+                </div>
+            `;
+            listEl.appendChild(li);
+        });
+
+        balanceEl.innerText = `₪${currentBalance.toFixed(2)}`;
+        localStorage.setItem('my_wallet_transactions', JSON.stringify(transactions));
+    }
+
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const tx = {
+            description: descriptionEl.value,
+            amount: parseFloat(amountEl.value),
+            type: typeEl.value,
+            date: new Date().toLocaleDateString('he-IL') + ' ' + new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'})
+        };
+
+        transactions.push(tx);
+        updateUI();
+
+        descriptionEl.value = '';
+        amountEl.value = '';
+    });
+
+    function deleteTransaction(index) {
+        transactions.splice(index, 1);
+        updateUI();
+    }
+
+    // אתחול ראשוני
+    updateUI();
+</script>
+
+</body>
+</html>
