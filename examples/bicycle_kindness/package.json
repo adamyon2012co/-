@@ -1,0 +1,46 @@
+{
+  "logline": "A commuter quietly repairs a stranger's bicycle, and a reflection reveals the kindness has already traveled farther than expected.",
+  "voice_over": "Mara noticed the loose bicycle chain every morning, beside the same quiet cafe. She never knew its owner, but carried a small tool kit. Before work, she fixed it and left without a note. That evening, the shop window reflected someone repairing Mara’s crooked basket. In the glass, kindness looked less like a favor and more like a road people chose together.",
+  "character_bible": [
+    {"name": "Mara", "age": 34, "appearance": "Black woman, short natural curls, rust coat, navy trousers, canvas satchel", "temperament": "observant and quietly generous"},
+    {"name": "Eli", "age": 41, "appearance": "East Asian man, silver-streaked hair, forest-green jacket, tan trousers", "temperament": "careful and appreciative"}
+  ],
+  "scenes": [
+    {
+      "number": 1,
+      "plan": "At dawn, Mara notices a loose chain on a parked blue bicycle and pauses beside it.",
+      "keyframe_prompt": "Cinematic dawn street, Mara in rust coat beside a blue commuter bicycle, concerned glance at loose chain, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing.",
+      "motion_prompt": "Slow push toward Mara crouching to inspect the stationary chain, subtle coat movement, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing."
+    },
+    {
+      "number": 2,
+      "plan": "Mara takes a compact tool from her satchel and calmly seats the chain.",
+      "keyframe_prompt": "Close view of adult Mara's hands safely using a compact bicycle tool, blue bicycle, rust sleeve, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing.",
+      "motion_prompt": "Gentle locked camera as Mara slowly seats the chain and turns the pedal by hand, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing."
+    },
+    {
+      "number": 3,
+      "plan": "Mara checks her clean repair, returns the tool, and walks toward work without seeking credit.",
+      "keyframe_prompt": "Wide morning composition, Mara closing canvas satchel and leaving the neatly parked blue bicycle, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing.",
+      "motion_prompt": "Camera holds while Mara gives the wheel a final gentle spin then exits foreground, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing."
+    },
+    {
+      "number": 4,
+      "plan": "At evening, Mara returns and discovers her own bicycle basket now sits perfectly straight.",
+      "keyframe_prompt": "Warm evening light, surprised Mara touching the straightened basket of her cream bicycle near a dark shop window, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing.",
+      "motion_prompt": "Small arc around Mara as she tests the aligned basket and smiles with recognition, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing."
+    },
+    {
+      "number": 5,
+      "plan": "The shop-window reflection reveals Eli finishing the same caring repair gesture behind Mara.",
+      "reinterpretation": {"earlier_scene": 2, "meaning": "Mara's anonymous repair was witnessed and inspired an equally anonymous act for her."},
+      "keyframe_prompt": "Meaningful reveal in dark window reflection, adult Eli in green jacket returning a tool to his pocket behind smiling Mara and her aligned basket, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing.",
+      "motion_prompt": "Rack focus from Mara's repaired basket to Eli's reflected hand pocketing the tool, then their warm reflected smiles, vertical 9:16, stable identities, no visible text, no logos, no watermarks, no extra characters, no morphing."
+    }
+  ],
+  "titles": ["She Fixed a Stranger’s Bicycle—Then Saw the Reflection", "A Quiet Bicycle Favor Came Back Around", "The Shop Window Revealed Who Repaid Her Kindness"],
+  "description": "Mara makes one small bicycle repair without asking for credit. By evening, a shop-window reflection reveals how quietly kindness can keep moving. An original fictional micro-story made for a vertical short.",
+  "hashtags": ["#OriginalStory", "#WholesomeShort", "#Kindness", "#MicroStory", "#VisualTwist"],
+  "disclosure_note": "Original fictional story. Visuals and narration may be created or assisted with generative tools; no real event or endorsement is depicted."
+}
+

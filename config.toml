@@ -1,0 +1,11 @@
+[production]
+scene_count = 5
+max_scene_seconds = 8.0
+width = 1080
+height = 1920
+fps = 30
+
+[paths]
+episodes = "episodes"
+output = "output"
+
