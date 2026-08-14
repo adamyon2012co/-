@@ -23,6 +23,8 @@ def parser() -> argparse.ArgumentParser:
     build = sub.add_parser("export", help="create final MP4 and metadata locally")
     build.add_argument("episode", type=Path)
     build.add_argument("--output", type=Path)
+    build.add_argument("--no-narration", action="store_true", help="keep only the clips' original audio")
+    build.add_argument("--no-captions", action="store_true", help="do not burn captions into the video")
     return result
 
 
@@ -45,7 +47,8 @@ def main(argv: list[str] | None = None) -> int:
             print("Package and exactly five clips are valid. No files were uploaded.")
             return 0
         destination = args.output or Path(config["paths"]["output"]) / args.episode.name
-        final = export_episode(args.episode, destination, package, maximum, ffmpeg=ffmpeg)
+        final = export_episode(args.episode, destination, package, maximum, ffmpeg=ffmpeg,
+                               narration=not args.no_narration, captions=not args.no_captions)
         print(f"Local review export: {final}")
         return 0
     except (ValidationError, FileNotFoundError, KeyError, ValueError) as error:

@@ -6,7 +6,9 @@ from copy import deepcopy
 from pathlib import Path
 
 from wholesome_shorts.core import (ValidationError, resolve_ffmpeg, validate_clips,
-                                   validate_package, word_count)
+                                   validate_package, word_count, SubtitleCue, write_ass,
+                                   export_episode, NARRATOR_VOICE)
+from wholesome_shorts.cli import parser
 
 
 ROOT = Path(__file__).parents[1]
@@ -81,6 +83,55 @@ class PackageTests(unittest.TestCase):
         with patch("wholesome_shorts.core.Path.is_file", return_value=False):
             with self.assertRaisesRegex(FileNotFoundError, "--ffmpeg"):
                 resolve_ffmpeg("missing.exe")
+
+    def test_ass_captions_are_bold_outlined_and_limited_to_two_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "captions.ass"
+            write_ass([SubtitleCue(1.25, 2.5, r"A clear first line\Nand a second")], target)
+            contents = target.read_text(encoding="utf-8-sig")
+            self.assertIn("Arial,72", contents)
+            self.assertIn(",-1,0,0,0,100,100,0,0,1,5,0,2,90,90,500,1", contents)
+            self.assertIn("0:00:01.25,0:00:02.50", contents)
+            self.assertEqual(contents.count(r"\N"), 1)
+
+    def test_cli_can_disable_narration_and_captions(self):
+        args = parser().parse_args(["export", "episode", "--no-narration", "--no-captions"])
+        self.assertTrue(args.no_narration)
+        self.assertTrue(args.no_captions)
+
+    @patch("wholesome_shorts.core.resolve_ffmpeg", return_value="ffmpeg")
+    def test_export_uses_voice_timing_ducks_audio_and_preserves_final_mp4(self, _resolve):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode, output = root / "episode", root / "output"
+            episode.mkdir()
+            output.mkdir()
+            (output / "final.mp4").write_bytes(b"keep")
+            for name in (f"scene_{number:02d}.mp4" for number in range(1, 6)):
+                (episode / name).touch()
+            package = json.loads((ROOT / "examples/bicycle_kindness/package.json").read_text())
+            commands = []
+
+            def runner(command, **kwargs):
+                commands.append(command)
+                if "-hide_banner" in command:
+                    return Mock(stderr="Duration: 00:00:08.00")
+                return Mock(returncode=0)
+
+            def narrator(text, path, voice):
+                self.assertEqual(text, package["voice_over"])
+                self.assertEqual(voice, NARRATOR_VOICE)
+                path.write_bytes(b"audio")
+                return [SubtitleCue(0, 1, "Hello world")]
+
+            final = export_episode(episode, output, package, runner=runner, narrator=narrator)
+            self.assertEqual(final.name, "final_captioned.mp4")
+            self.assertEqual((output / "final.mp4").read_bytes(), b"keep")
+            filter_graph = commands[-1][commands[-1].index("-filter_complex") + 1]
+            self.assertIn("volume=0.16", filter_graph)
+            self.assertIn("loudnorm=I=-16", filter_graph)
+            self.assertIn("concat=n=5", filter_graph)
+            self.assertIn("ass=", filter_graph)
 
 
 if __name__ == "__main__":

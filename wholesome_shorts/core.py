@@ -5,6 +5,8 @@ import os
 import re
 import subprocess
 import shutil
+import asyncio
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -17,6 +19,14 @@ BANNED = (
     "copyrighted character", "celebrity", "brand logo", "politician",
     "medical cure", "weapon", "violence", "dangerous stunt", "child",
 )
+NARRATOR_VOICE = "en-US-AriaNeural"
+
+
+@dataclass(frozen=True)
+class SubtitleCue:
+    start: float
+    end: float
+    text: str
 
 
 class ValidationError(ValueError):
@@ -118,16 +128,87 @@ def validate_clips(episode_dir: Path, max_seconds: float = 8.0,
     return expected
 
 
+def _ass_time(seconds: float) -> str:
+    centiseconds = max(0, round(seconds * 100))
+    return f"{centiseconds // 360000}:{centiseconds // 6000 % 60:02d}:{centiseconds // 100 % 60:02d}.{centiseconds % 100:02d}"
+
+
+def _caption_lines(words: list[str], max_chars: int = 28) -> str:
+    """Wrap a short caption into no more than two frame-safe lines."""
+    split = min(range(1, len(words) + 1), key=lambda i: abs(len(" ".join(words[:i])) - len(" ".join(words[i:]))))
+    lines = [" ".join(words[:split]), " ".join(words[split:])]
+    lines = [line for line in lines if line]
+    if any(len(line) > max_chars for line in lines):
+        raise ValidationError("A voice-over word is too long for the caption safe area")
+    return r"\N".join(lines)
+
+
+def write_ass(cues: list[SubtitleCue], path: Path) -> None:
+    header = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 2
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Caption,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,90,90,500,1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+"""
+    events = [f"Dialogue: 0,{_ass_time(c.start)},{_ass_time(c.end)},Caption,,0,0,0,,{c.text}" for c in cues]
+    path.write_text(header + "\n".join(events) + "\n", encoding="utf-8-sig")
+
+
+async def _edge_narration(text: str, audio_path: Path, voice: str = NARRATOR_VOICE) -> list[SubtitleCue]:
+    """Synthesize narration and derive cue times from Edge TTS word boundaries."""
+    import edge_tts
+
+    boundaries: list[tuple[float, float, str]] = []
+    with audio_path.open("wb") as audio:
+        async for chunk in edge_tts.Communicate(text, voice).stream():
+            if chunk["type"] == "audio":
+                audio.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                start = chunk["offset"] / 10_000_000
+                boundaries.append((start, start + chunk["duration"] / 10_000_000, chunk["text"]))
+    if not boundaries:
+        raise ValidationError("Narration did not return synchronized word timing")
+    cues: list[SubtitleCue] = []
+    for index in range(0, len(boundaries), 7):
+        group = boundaries[index:index + 7]
+        end = boundaries[index + 7][0] if index + 7 < len(boundaries) else group[-1][1] + .15
+        cues.append(SubtitleCue(group[0][0], end, _caption_lines([word[2] for word in group])))
+    return cues
+
+
+def generate_narration(text: str, audio_path: Path, voice: str = NARRATOR_VOICE) -> list[SubtitleCue]:
+    return asyncio.run(_edge_narration(text, audio_path, voice))
+
+
+def _ffmpeg_filter_path(path: Path) -> str:
+    # FFmpeg's filter parser treats both drive colons and apostrophes specially.
+    return str(path.resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+
+
 def export_episode(episode_dir: Path, output_dir: Path, package: dict[str, Any],
                    max_seconds: float = 8.0,
                    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-                   ffmpeg: str | Path | None = None) -> Path:
+                   ffmpeg: str | Path | None = None, narration: bool = True,
+                   captions: bool = True,
+                   narrator: Callable[[str, Path, str], list[SubtitleCue]] = generate_narration) -> Path:
     validate_package(package)
     executable = resolve_ffmpeg(ffmpeg)
     clips = validate_clips(episode_dir, max_seconds,
                            probe=lambda path: probe_duration(path, runner, executable))
     output_dir.mkdir(parents=True, exist_ok=True)
-    final = output_dir / "final.mp4"
+    final = output_dir / "final_captioned.mp4"
+    narration_file = output_dir / "narration.mp3"
+    cues = narrator(package["voice_over"], narration_file, NARRATOR_VOICE) if narration or captions else []
+    subtitle_file = output_dir / "captions.ass"
+    if captions:
+        write_ass(cues, subtitle_file)
     command = [executable, "-y"]
     for clip in clips:
         command.extend(["-i", str(clip)])
@@ -135,10 +216,24 @@ def export_episode(episode_dir: Path, output_dir: Path, package: dict[str, Any],
     for index in range(5):
         filters.append(
             f"[{index}:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
-            f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,fps=30,setsar=1[v{index}]"
+            f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,fps=30,setsar=1,"
+            f"tpad=stop_mode=clone:stop_duration={max_seconds},trim=duration={max_seconds}[v{index}]"
         )
-    filters.append("".join(f"[v{i}][{i}:a]" for i in range(5)) + "concat=n=5:v=1:a=1[v][a]")
-    command.extend(["-filter_complex", ";".join(filters), "-map", "[v]", "-map", "[a]",
+        filters.append(f"[{index}:a]apad=pad_dur={max_seconds},atrim=duration={max_seconds}[a{index}]")
+    filters.append("".join(f"[v{i}][a{i}]" for i in range(5)) + "concat=n=5:v=1:a=1[vbase][abase]")
+    video_label = "vbase"
+    if captions:
+        filters.append(f"[vbase]ass='{_ffmpeg_filter_path(subtitle_file)}'[vout]")
+        video_label = "vout"
+    if narration:
+        command.extend(["-i", str(narration_file)])
+        filters.extend(["[abase]volume=0.16[quiet]", "[5:a]loudnorm=I=-16:LRA=7:TP=-1.5[voice]",
+                        "[quiet][voice]amix=inputs=2:duration=first:dropout_transition=0[aout]"])
+        audio_label = "aout"
+    else:
+        filters.append("[abase]anull[aout]")
+        audio_label = "aout"
+    command.extend(["-filter_complex", ";".join(filters), "-map", f"[{video_label}]", "-map", f"[{audio_label}]",
                     "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-c:a", "aac",
                     "-movflags", "+faststart", str(final)])
     runner(command, check=True)
