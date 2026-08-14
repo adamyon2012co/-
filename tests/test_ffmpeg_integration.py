@@ -40,7 +40,8 @@ class FfmpegIntegrationTests(unittest.TestCase):
                     "-c:a", "aac", str(episode / f"scene_{index:02d}.mp4"),
                 ], check=True)
 
-            final = export_episode(episode, output, package, ffmpeg=FFMPEG)
+            final = export_episode(episode, output, package, max_seconds=1, ffmpeg=FFMPEG,
+                                   narration=False, captions=False)
             inspection = subprocess.run(
                 [FFMPEG, "-hide_banner", "-i", str(final), "-f", "null", "-"],
                 capture_output=True, text=True, check=False,

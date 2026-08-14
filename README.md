@@ -15,6 +15,7 @@ The included bicycle-kindness pilot is the repository's quality reference. It co
 
 - Python 3.11 or newer
 - FFmpeg supplied by the installed `imageio-ffmpeg` dependency. A system installation is optional.
+- An internet connection while `edge-tts` creates the English narration (no API key or paid account is required).
 - Five clips named **exactly** `scene_01.mp4` through `scene_05.mp4`; each must be longer than zero and no more than 8 seconds. Clips should contain an audio stream (silence is acceptable) for the current concat exporter.
 
 ## Windows setup (PowerShell)
@@ -39,11 +40,20 @@ Get-ChildItem .\episodes\my_episode\scene_*.mp4 | Sort-Object Name | Select-Obje
 # Validate package structure, clip names, and the eight-second limit.
 wholesome-shorts --config .\config.toml validate .\episodes\my_episode
 
-# Export the finished 1080x1920 review video and metadata locally.
+# Export narration, burned-in captions, and the finished 1080x1920 review video.
 wholesome-shorts --config .\config.toml export .\episodes\my_episode --output .\output\my_episode
 
-# Inspect the generated files. Playback or file Properties can confirm dimensions.
+# Confirm the new file exists without replacing any earlier final.mp4.
+Test-Path .\output\my_episode\final_captioned.mp4
 Get-ChildItem .\output\my_episode
+```
+
+The narrator is the clear adult English `en-US-AriaNeural` voice. Word-boundary events from the generated narration drive the two-line captions; narration is normalized and the clips remain audible at a reduced level. To disable either feature independently, run one of these exact commands:
+
+```powershell
+wholesome-shorts --config .\config.toml export .\episodes\my_episode --output .\output\my_episode --no-narration
+wholesome-shorts --config .\config.toml export .\episodes\my_episode --output .\output\my_episode --no-captions
+wholesome-shorts --config .\config.toml export .\episodes\my_episode --output .\output\my_episode --no-narration --no-captions
 ```
 
 Resolution order is `--ffmpeg`, `$env:FFMPEG_BINARY`, `ffmpeg` on `PATH`, then the binary installed by `imageio-ffmpeg`. To select a portable executable explicitly in PowerShell:
@@ -67,7 +77,7 @@ wholesome-shorts validate episodes/my_episode
 wholesome-shorts export episodes/my_episode
 ```
 
-The output folder contains `final.mp4`, the validated `package.json`, and creator-friendly `metadata.txt`. Review all three locally before manually using any platform. The exporter normalizes visuals to 1080×1920 at 30 fps, letterboxing rather than cropping. `config.toml` controls the local episode/output paths and duration settings; safety invariants remain enforced by the application.
+The output folder contains `final_captioned.mp4` (and never overwrites a pre-existing `final.mp4`), the validated `package.json`, narration/caption working files, and creator-friendly `metadata.txt`. Review the result locally before manually using any platform. The exporter keeps all five scenes in filename order, normalizes visuals to 1080×1920 at 30 fps, letterboxes rather than crops, and pads each short clip's final frame and audio to the configured eight-second scene length for a roughly 40-second Short. `config.toml` controls the local episode/output paths and duration settings; safety invariants remain enforced by the application. There is still no upload, OAuth, or external-account action.
 
 ## Tests
 
@@ -75,5 +85,5 @@ The output folder contains `final.mp4`, the validated `package.json`, and creato
 python -m unittest discover -s tests -v
 ```
 
-Tests do not require real video or network access. A real export requires FFmpeg and five user-created clips.
+Unit tests do not require network access; narration is mocked. A real narrated export requires FFmpeg, internet access to the free Edge speech service, and five user-created clips.
 The integration test creates five colored clips, exports them, verifies 1080×1920 dimensions, and samples the center pixel of each segment to prove red, green, blue, yellow, and magenta scene order. It is skipped only when no usable FFmpeg binary can be resolved.
