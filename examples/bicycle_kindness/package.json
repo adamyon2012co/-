@@ -44,5 +44,8 @@
   "titles": ["She Fixed a Stranger’s Bicycle—Then Saw the Reflection", "A Quiet Bicycle Favor Came Back Around", "The Shop Window Revealed Who Repaid Her Kindness"],
   "description": "Mara makes one small bicycle repair without asking for credit. By evening, a shop-window reflection reveals how quietly kindness can keep moving. An original fictional micro-story made for a vertical short.",
   "hashtags": ["#OriginalStory", "#WholesomeShort", "#Kindness", "#MicroStory", "#VisualTwist"],
-  "disclosure_note": "Original fictional story. Visuals and narration may be created or assisted with generative tools; no real event or endorsement is depicted."
+  "disclosure_note": "Original fictional story. Visuals and narration may be created or assisted with generative tools; no real event or endorsement is depicted.",
+  "made_for_kids": false,
+  "contains_synthetic_media": true,
+  "youtube_category": "22"
 }

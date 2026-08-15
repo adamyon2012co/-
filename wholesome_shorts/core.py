@@ -276,6 +276,8 @@ def export_episode(episode_dir: Path, output_dir: Path, package: dict[str, Any],
                            probe=lambda path: probe_duration(path, runner, executable))
     output_dir.mkdir(parents=True, exist_ok=True)
     final = output_dir / "final_captioned.mp4"
+    completion_marker = output_dir / "export_complete.json"
+    completion_marker.unlink(missing_ok=True)
     narration_file = output_dir / "narration.mp3"
     selection = select_voice(package)
     if narration or captions:
@@ -334,6 +336,8 @@ def export_episode(episode_dir: Path, output_dir: Path, package: dict[str, Any],
         "hashtags": package["hashtags"],
         "disclosure_note": package["disclosure_note"],
     }, indent=2) + "\n", encoding="utf-8")
+    completion_marker.write_text(json.dumps({"video": final.name}, indent=2) + "\n",
+                                 encoding="utf-8")
     return final
 
 
