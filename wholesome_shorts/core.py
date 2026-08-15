@@ -19,7 +19,21 @@ BANNED = (
     "copyrighted character", "celebrity", "brand logo", "politician",
     "medical cure", "weapon", "violence", "dangerous stunt", "child",
 )
-NARRATOR_VOICE = "en-US-AriaNeural"
+NARRATOR_VOICE = "en-US-GuyNeural"
+APPROVED_VOICES = (
+    "en-US-GuyNeural",
+    "en-US-JennyNeural",
+    "en-US-AriaNeural",
+    "en-US-DavisNeural",
+)
+
+
+@dataclass(frozen=True)
+class VoiceSelection:
+    voice: str
+    rate: str
+    pitch: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -31,6 +45,37 @@ class SubtitleCue:
 
 class ValidationError(ValueError):
     """Raised when an episode cannot safely be produced."""
+
+
+def select_voice(package: dict[str, Any]) -> VoiceSelection:
+    """Choose one approved English voice and restrained prosody for an episode."""
+    fields = ("voice_over", "tone", "genre", "mood")
+    signals = " ".join(str(package.get(field, "")) for field in fields).casefold()
+    profiles = (
+        (("suspense", "mystery", "tense", "ominous"), "en-US-DavisNeural", "-6%", "-2Hz", "tense or mysterious"),
+        (("upbeat", "joyful", "playful", "comedy", "celebration"), "en-US-JennyNeural", "+6%", "+2Hz", "upbeat or playful"),
+        (("gentle", "warm", "wholesome", "kindness", "reflective", "tender"), "en-US-AriaNeural", "-2%", "+1Hz", "warm or reflective"),
+        (("dramatic", "adventure", "urgent", "action"), NARRATOR_VOICE, "+2%", "-1Hz", "dramatic or energetic"),
+    )
+    automatic_voice, rate, pitch = NARRATOR_VOICE, "+0%", "+0Hz"
+    mood_reason = "no strong mood signal was found"
+    for keywords, candidate, candidate_rate, candidate_pitch, description in profiles:
+        matches = [keyword for keyword in keywords if keyword in signals]
+        if matches:
+            automatic_voice, rate, pitch = candidate, candidate_rate, candidate_pitch
+            mood_reason = f"{description} language ({', '.join(matches)})"
+            break
+
+    override = package.get("voice")
+    if override is not None:
+        if isinstance(override, str) and override in APPROVED_VOICES:
+            return VoiceSelection(override, rate, pitch,
+                                  f"package voice override; prosody reflects {mood_reason}")
+        return VoiceSelection(NARRATOR_VOICE, rate, pitch,
+                              "voice override was not in the approved English voice list; "
+                              f"fell back to {NARRATOR_VOICE}; prosody reflects {mood_reason}")
+    return VoiceSelection(automatic_voice, rate, pitch,
+                          f"automatic selection from voice_over, tone, genre, and mood: {mood_reason}")
 
 
 def resolve_ffmpeg(explicit: str | Path | None = None) -> str:
@@ -183,13 +228,14 @@ def _approximate_boundaries(text: str, duration: float) -> list[tuple[float, flo
 
 
 async def _edge_narration(text: str, audio_path: Path, voice: str = NARRATOR_VOICE,
+                          rate: str = "+0%", pitch: str = "+0Hz",
                           ffmpeg: str | Path | None = None) -> list[SubtitleCue]:
     """Synthesize audio and timing together in one Edge TTS stream pass."""
     import edge_tts
 
     boundaries: list[tuple[float, float, str]] = []
     audio_bytes = 0
-    communicate = edge_tts.Communicate(text, voice)
+    communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
     with audio_path.open("wb") as audio:
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -208,8 +254,9 @@ async def _edge_narration(text: str, audio_path: Path, voice: str = NARRATOR_VOI
 
 
 def generate_narration(text: str, audio_path: Path, voice: str = NARRATOR_VOICE,
+                       rate: str = "+0%", pitch: str = "+0Hz",
                        ffmpeg: str | Path | None = None) -> list[SubtitleCue]:
-    return asyncio.run(_edge_narration(text, audio_path, voice, ffmpeg))
+    return asyncio.run(_edge_narration(text, audio_path, voice, rate, pitch, ffmpeg))
 
 
 def _ffmpeg_filter_path(path: Path) -> str:
@@ -222,7 +269,7 @@ def export_episode(episode_dir: Path, output_dir: Path, package: dict[str, Any],
                    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
                    ffmpeg: str | Path | None = None, narration: bool = True,
                    captions: bool = True,
-                   narrator: Callable[[str, Path, str], list[SubtitleCue]] = generate_narration) -> Path:
+                   narrator: Callable[[str, Path, str, str, str], list[SubtitleCue]] = generate_narration) -> Path:
     validate_package(package)
     executable = resolve_ffmpeg(ffmpeg)
     clips = validate_clips(episode_dir, max_seconds,
@@ -230,12 +277,15 @@ def export_episode(episode_dir: Path, output_dir: Path, package: dict[str, Any],
     output_dir.mkdir(parents=True, exist_ok=True)
     final = output_dir / "final_captioned.mp4"
     narration_file = output_dir / "narration.mp3"
+    selection = select_voice(package)
     if narration or captions:
-        # Pass the already-resolved executable to the built-in fallback while preserving
-        # the three-argument narrator hook used by callers and tests.
-        cues = (generate_narration(package["voice_over"], narration_file, NARRATOR_VOICE, executable)
+        # Pass the resolved executable to the built-in duration fallback. Custom
+        # narrators receive the same voice and prosody used to describe the export.
+        cues = (generate_narration(package["voice_over"], narration_file, selection.voice,
+                                   selection.rate, selection.pitch, executable)
                 if narrator is generate_narration
-                else narrator(package["voice_over"], narration_file, NARRATOR_VOICE))
+                else narrator(package["voice_over"], narration_file, selection.voice,
+                              selection.rate, selection.pitch))
     else:
         cues = []
     subtitle_file = output_dir / "captions.ass"
@@ -274,6 +324,16 @@ def export_episode(episode_dir: Path, output_dir: Path, package: dict[str, Any],
         f"TITLE OPTIONS\n" + "\n".join(f"- {title}" for title in package["titles"]) +
         f"\n\nDESCRIPTION\n{package['description']}\n\nHASHTAGS\n{' '.join(package['hashtags'])}"
         f"\n\nDISCLOSURE\n{package['disclosure_note']}\n", encoding="utf-8")
+    (output_dir / "metadata.json").write_text(json.dumps({
+        "voice": selection.voice,
+        "rate": selection.rate,
+        "pitch": selection.pitch,
+        "selection_reason": selection.reason,
+        "titles": package["titles"],
+        "description": package["description"],
+        "hashtags": package["hashtags"],
+        "disclosure_note": package["disclosure_note"],
+    }, indent=2) + "\n", encoding="utf-8")
     return final
 
 
