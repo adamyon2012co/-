@@ -1,13 +1,15 @@
 import json
 import tempfile
 import unittest
+import sys
+import types
 from unittest.mock import Mock, patch
 from copy import deepcopy
 from pathlib import Path
 
 from wholesome_shorts.core import (ValidationError, resolve_ffmpeg, validate_clips,
                                    validate_package, word_count, SubtitleCue, write_ass,
-                                   export_episode, NARRATOR_VOICE)
+                                   export_episode, NARRATOR_VOICE, generate_narration)
 from wholesome_shorts.cli import parser
 
 
@@ -93,6 +95,57 @@ class PackageTests(unittest.TestCase):
             self.assertIn(",-1,0,0,0,100,100,0,0,1,5,0,2,90,90,500,1", contents)
             self.assertIn("0:00:01.25,0:00:02.50", contents)
             self.assertEqual(contents.count(r"\N"), 1)
+
+    def _edge_module(self, chunks):
+        module = types.ModuleType("edge_tts")
+        instances = []
+
+        class Communicate:
+            def __init__(self, text, voice):
+                self.text, self.voice, self.stream_calls = text, voice, 0
+                instances.append(self)
+
+            async def stream(self):
+                self.stream_calls += 1
+                for chunk in chunks:
+                    yield chunk
+
+        module.Communicate = Communicate
+        return module, instances
+
+    def test_narration_collects_audio_and_ordered_word_boundaries_in_one_pass(self):
+        chunks = [
+            {"type": "audio", "data": b"first"},
+            {"type": "WordBoundary", "offset": 10_000_000, "duration": 2_000_000, "text": "Hello"},
+            {"type": "audio", "data": b"second"},
+            {"type": "WordBoundary", "offset": 13_000_000, "duration": 4_000_000, "text": "world"},
+        ]
+        edge, instances = self._edge_module(chunks)
+        with tempfile.TemporaryDirectory() as directory, patch.dict(sys.modules, {"edge_tts": edge}):
+            audio = Path(directory) / "narration.mp3"
+            cues = generate_narration("Hello world", audio)
+            self.assertEqual(audio.read_bytes(), b"firstsecond")
+        self.assertEqual(len(instances), 1)
+        self.assertEqual(instances[0].stream_calls, 1)
+        self.assertEqual(cues, [SubtitleCue(1.0, 1.85, r"Hello\Nworld")])
+
+    @patch("wholesome_shorts.core.probe_duration", return_value=4.0)
+    def test_narration_approximates_timings_when_audio_has_no_boundaries(self, probe):
+        edge, instances = self._edge_module([{"type": "audio", "data": b"valid mp3"}])
+        with tempfile.TemporaryDirectory() as directory, patch.dict(sys.modules, {"edge_tts": edge}):
+            audio = Path(directory) / "narration.mp3"
+            cues = generate_narration("one two three four", audio, ffmpeg="resolved-ffmpeg")
+        probe.assert_called_once_with(audio, ffmpeg="resolved-ffmpeg")
+        self.assertEqual(instances[0].stream_calls, 1)
+        self.assertEqual(cues, [SubtitleCue(0.0, 4.0, r"one two\Nthree four")])
+
+    def test_narration_rejects_response_with_no_audio(self):
+        edge, _instances = self._edge_module([
+            {"type": "WordBoundary", "offset": 0, "duration": 1_000_000, "text": "Hello"}
+        ])
+        with tempfile.TemporaryDirectory() as directory, patch.dict(sys.modules, {"edge_tts": edge}):
+            with self.assertRaisesRegex(ValidationError, "did not return audio"):
+                generate_narration("Hello", Path(directory) / "narration.mp3")
 
     def test_cli_can_disable_narration_and_captions(self):
         args = parser().parse_args(["export", "episode", "--no-narration", "--no-captions"])

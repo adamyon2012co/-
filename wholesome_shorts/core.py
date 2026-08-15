@@ -161,30 +161,55 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     path.write_text(header + "\n".join(events) + "\n", encoding="utf-8-sig")
 
 
-async def _edge_narration(text: str, audio_path: Path, voice: str = NARRATOR_VOICE) -> list[SubtitleCue]:
-    """Synthesize narration and derive cue times from Edge TTS word boundaries."""
-    import edge_tts
-
-    boundaries: list[tuple[float, float, str]] = []
-    with audio_path.open("wb") as audio:
-        async for chunk in edge_tts.Communicate(text, voice).stream():
-            if chunk["type"] == "audio":
-                audio.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                start = chunk["offset"] / 10_000_000
-                boundaries.append((start, start + chunk["duration"] / 10_000_000, chunk["text"]))
-    if not boundaries:
-        raise ValidationError("Narration did not return synchronized word timing")
+def _cues_from_boundaries(boundaries: list[tuple[float, float, str]],
+                          final_padding: float = .15) -> list[SubtitleCue]:
+    """Group ordered word boundaries into short, two-line captions."""
     cues: list[SubtitleCue] = []
     for index in range(0, len(boundaries), 7):
         group = boundaries[index:index + 7]
-        end = boundaries[index + 7][0] if index + 7 < len(boundaries) else group[-1][1] + .15
+        end = boundaries[index + 7][0] if index + 7 < len(boundaries) else group[-1][1] + final_padding
         cues.append(SubtitleCue(group[0][0], end, _caption_lines([word[2] for word in group])))
     return cues
 
 
-def generate_narration(text: str, audio_path: Path, voice: str = NARRATOR_VOICE) -> list[SubtitleCue]:
-    return asyncio.run(_edge_narration(text, audio_path, voice))
+def _approximate_boundaries(text: str, duration: float) -> list[tuple[float, float, str]]:
+    """Evenly distribute narration words when Edge omits boundary metadata."""
+    words = re.findall(r"\b[\w'-]+\b", text)
+    if not words or duration <= 0:
+        raise ValidationError("Could not approximate narration word timing")
+    word_duration = duration / len(words)
+    return [(index * word_duration, (index + 1) * word_duration, word)
+            for index, word in enumerate(words)]
+
+
+async def _edge_narration(text: str, audio_path: Path, voice: str = NARRATOR_VOICE,
+                          ffmpeg: str | Path | None = None) -> list[SubtitleCue]:
+    """Synthesize audio and timing together in one Edge TTS stream pass."""
+    import edge_tts
+
+    boundaries: list[tuple[float, float, str]] = []
+    audio_bytes = 0
+    communicate = edge_tts.Communicate(text, voice)
+    with audio_path.open("wb") as audio:
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio.write(chunk["data"])
+                audio_bytes += len(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                # Edge offsets and durations are expressed in 100-nanosecond ticks.
+                start = chunk["offset"] / 10_000_000
+                boundaries.append((start, start + chunk["duration"] / 10_000_000, chunk["text"]))
+    if not audio_bytes:
+        raise ValidationError("Narration did not return audio")
+    if not boundaries:
+        boundaries = _approximate_boundaries(text, probe_duration(audio_path, ffmpeg=ffmpeg))
+        return _cues_from_boundaries(boundaries, final_padding=0)
+    return _cues_from_boundaries(boundaries)
+
+
+def generate_narration(text: str, audio_path: Path, voice: str = NARRATOR_VOICE,
+                       ffmpeg: str | Path | None = None) -> list[SubtitleCue]:
+    return asyncio.run(_edge_narration(text, audio_path, voice, ffmpeg))
 
 
 def _ffmpeg_filter_path(path: Path) -> str:
@@ -205,7 +230,14 @@ def export_episode(episode_dir: Path, output_dir: Path, package: dict[str, Any],
     output_dir.mkdir(parents=True, exist_ok=True)
     final = output_dir / "final_captioned.mp4"
     narration_file = output_dir / "narration.mp3"
-    cues = narrator(package["voice_over"], narration_file, NARRATOR_VOICE) if narration or captions else []
+    if narration or captions:
+        # Pass the already-resolved executable to the built-in fallback while preserving
+        # the three-argument narrator hook used by callers and tests.
+        cues = (generate_narration(package["voice_over"], narration_file, NARRATOR_VOICE, executable)
+                if narrator is generate_narration
+                else narrator(package["voice_over"], narration_file, NARRATOR_VOICE))
+    else:
+        cues = []
     subtitle_file = output_dir / "captions.ass"
     if captions:
         write_ass(cues, subtitle_file)
