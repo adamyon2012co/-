@@ -48,7 +48,9 @@ Test-Path .\output\my_episode\final_captioned.mp4
 Get-ChildItem .\output\my_episode
 ```
 
-The narrator is the clear adult English `en-US-AriaNeural` voice. Word-boundary events from the generated narration drive the two-line captions; narration is normalized and the clips remain audible at a reduced level. To disable either feature independently, run one of these exact commands:
+The exporter automatically chooses **one voice for the entire episode** from the approved English Edge TTS set: `en-US-GuyNeural`, `en-US-JennyNeural`, `en-US-AriaNeural`, and `en-US-DavisNeural`. It considers `voice_over` plus optional `tone`, `genre`, and `mood` package fields, then applies a deliberately restrained speaking rate and pitch suited to signals such as warm/reflective, upbeat/playful, tense/mysterious, or dramatic/energetic. If selection fails, it uses `en-US-GuyNeural`.
+
+To choose explicitly, add an approved voice to `package.json`, for example `"voice": "en-US-DavisNeural"`. An unapproved override safely falls back to `en-US-GuyNeural`. The output `metadata.json` records `voice`, `rate`, `pitch`, and a human-readable `selection_reason`, along with the publishing copy. Word-boundary events from that exact voice/rate/pitch synthesis request drive the two-line captions, so captions remain synchronized with the selected narration; narration is normalized and the clips remain audible at a reduced level. To disable either feature independently, run one of these exact commands:
 
 ```powershell
 wholesome-shorts --config .\config.toml export .\episodes\my_episode --output .\output\my_episode --no-narration
@@ -83,7 +85,7 @@ wholesome-shorts validate episodes/my_episode
 wholesome-shorts export episodes/my_episode
 ```
 
-The output folder contains `final_captioned.mp4` (and never overwrites a pre-existing `final.mp4`), the validated `package.json`, narration/caption working files, and creator-friendly `metadata.txt`. Review the result locally before manually using any platform. The exporter keeps all five scenes in filename order, normalizes visuals to 1080×1920 at 30 fps, letterboxes rather than crops, and pads each short clip's final frame and audio to the configured eight-second scene length for a roughly 40-second Short. `config.toml` controls the local episode/output paths and duration settings; safety invariants remain enforced by the application. There is still no upload, OAuth, or external-account action.
+The output folder contains `final_captioned.mp4` (and never overwrites a pre-existing `final.mp4`), the validated `package.json`, narration/caption working files, creator-friendly `metadata.txt`, and machine-readable `metadata.json` including the narration choice. Review the result locally before manually using any platform. The exporter keeps all five scenes in filename order, normalizes visuals to 1080×1920 at 30 fps, letterboxes rather than crops, and pads each short clip's final frame and audio to the configured eight-second scene length for a roughly 40-second Short. `config.toml` controls the local episode/output paths and duration settings; safety invariants remain enforced by the application. There is still no upload, OAuth, or external-account action.
 
 ## Tests
 

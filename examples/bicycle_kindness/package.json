@@ -1,5 +1,8 @@
 {
   "logline": "A commuter quietly repairs a stranger's bicycle, and a reflection reveals the kindness has already traveled farther than expected.",
+  "tone": "warm and reflective",
+  "genre": "wholesome micro-story",
+  "mood": "gentle kindness",
   "voice_over": "Mara noticed the loose bicycle chain every morning, beside the same quiet cafe. She never knew its owner, but carried a small tool kit. Before work, she fixed it and left without a note. That evening, the shop window reflected someone repairing Mara’s crooked basket. In the glass, kindness looked less like a favor and more like a road people chose together.",
   "character_bible": [
     {"name": "Mara", "age": 34, "appearance": "Black woman, short natural curls, rust coat, navy trousers, canvas satchel", "temperament": "observant and quietly generous"},
@@ -43,4 +46,3 @@
   "hashtags": ["#OriginalStory", "#WholesomeShort", "#Kindness", "#MicroStory", "#VisualTwist"],
   "disclosure_note": "Original fictional story. Visuals and narration may be created or assisted with generative tools; no real event or endorsement is depicted."
 }
-

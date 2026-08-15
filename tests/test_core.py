@@ -9,7 +9,8 @@ from pathlib import Path
 
 from wholesome_shorts.core import (ValidationError, resolve_ffmpeg, validate_clips,
                                    validate_package, word_count, SubtitleCue, write_ass,
-                                   export_episode, NARRATOR_VOICE, generate_narration)
+                                   export_episode, APPROVED_VOICES,
+                                   generate_narration, select_voice)
 from wholesome_shorts.cli import parser
 
 
@@ -101,8 +102,9 @@ class PackageTests(unittest.TestCase):
         instances = []
 
         class Communicate:
-            def __init__(self, text, voice):
-                self.text, self.voice, self.stream_calls = text, voice, 0
+            def __init__(self, text, voice, rate="+0%", pitch="+0Hz"):
+                self.text, self.voice = text, voice
+                self.rate, self.pitch, self.stream_calls = rate, pitch, 0
                 instances.append(self)
 
             async def stream(self):
@@ -127,7 +129,26 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(audio.read_bytes(), b"firstsecond")
         self.assertEqual(len(instances), 1)
         self.assertEqual(instances[0].stream_calls, 1)
+        self.assertEqual((instances[0].rate, instances[0].pitch), ("+0%", "+0Hz"))
         self.assertEqual(cues, [SubtitleCue(1.0, 1.85, r"Hello\Nworld")])
+
+    def test_voice_selection_uses_package_signals_and_restrained_prosody(self):
+        package = deepcopy(self.package)
+        package.update({"tone": "playful", "genre": "comedy", "mood": "joyful"})
+        selection = select_voice(package)
+        self.assertEqual(selection.voice, "en-US-JennyNeural")
+        self.assertEqual((selection.rate, selection.pitch), ("+6%", "+2Hz"))
+        self.assertIn("tone, genre, and mood", selection.reason)
+        self.assertIn(selection.voice, APPROVED_VOICES)
+
+    def test_voice_override_and_invalid_override_fallback(self):
+        package = deepcopy(self.package)
+        package["voice"] = "en-US-DavisNeural"
+        self.assertEqual(select_voice(package).voice, "en-US-DavisNeural")
+        package["voice"] = "not-an-approved-voice"
+        fallback = select_voice(package)
+        self.assertEqual(fallback.voice, "en-US-GuyNeural")
+        self.assertIn("fell back", fallback.reason)
 
     @patch("wholesome_shorts.core.probe_duration", return_value=4.0)
     def test_narration_approximates_timings_when_audio_has_no_boundaries(self, probe):
@@ -171,9 +192,10 @@ class PackageTests(unittest.TestCase):
                     return Mock(stderr="Duration: 00:00:08.00")
                 return Mock(returncode=0)
 
-            def narrator(text, path, voice):
+            def narrator(text, path, voice, rate, pitch):
                 self.assertEqual(text, package["voice_over"])
-                self.assertEqual(voice, NARRATOR_VOICE)
+                self.assertEqual(voice, "en-US-AriaNeural")
+                self.assertEqual((rate, pitch), ("-2%", "+1Hz"))
                 path.write_bytes(b"audio")
                 return [SubtitleCue(0, 1, "Hello world")]
 
@@ -185,6 +207,10 @@ class PackageTests(unittest.TestCase):
             self.assertIn("loudnorm=I=-16", filter_graph)
             self.assertIn("concat=n=5", filter_graph)
             self.assertIn("ass=", filter_graph)
+            metadata = json.loads((output / "metadata.json").read_text())
+            self.assertEqual(metadata["voice"], "en-US-AriaNeural")
+            self.assertEqual(metadata["rate"], "-2%")
+            self.assertIn("automatic selection", metadata["selection_reason"])
 
 
 if __name__ == "__main__":
