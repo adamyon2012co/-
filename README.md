@@ -1,3 +1,5 @@
+> **Daily production:** use [DAILY_WORKFLOW.md](DAILY_WORKFLOW.md) and `python daily_pipeline.py status`. The local agent prepares five image/motion prompts, then waits safely for the five manual Google Flow clips before export or upload. Publishing is disabled by default.
+
 # Wholesome Shorts local production workflow
 
 A safe Python CLI for producing **original English wholesome micro-stories with a meaningful visual twist**. It validates a complete creative package and exactly five manually supplied MP4 scenes, uses FFmpeg to create a reviewable local vertical MP4, and can upload an approved export to YouTube as **private only**.
