@@ -9,3 +9,12 @@ fps = 30
 episodes = "episodes"
 output = "output"
 
+
+[automation]
+automation_enabled = false
+publish_enabled = false
+public_upload = false
+ollama_model = "qwen3:4b"
+minimum_free_mb = 1500
+client_secrets = "client_secret.json"
+token_file = "token.json"
